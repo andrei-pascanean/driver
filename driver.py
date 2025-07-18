@@ -1,11 +1,21 @@
+import av
+import time
+import queue
+import logging
+
+from typing import List, NamedTuple
+
 import cv2
 import streamlit as st
+
 from fast_alpr import ALPR
 from fast_alpr.default_detector import PlateDetectorModel
 from fast_alpr.default_ocr import OcrModel
-import time
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
-import av
+
+logger = logging.getLogger(__name__)
+
+result_queue: "queue.Queue[List[Detection]]" = queue.Queue()
 
 class VideoProcessor(VideoProcessorBase):
     def __init__(self, detector_model, ocr_model):
@@ -23,6 +33,8 @@ class VideoProcessor(VideoProcessorBase):
             self.last_annotated = annotated_img
             self.last_processed = current_time
 
+            result_queue.put(result.ocr.text for result in results)
+
         # Return the annotated frame if available, otherwise the original
         output_img = self.last_annotated if self.last_annotated is not None else img
         return av.VideoFrame.from_ndarray(output_img, format="bgr24")
@@ -36,5 +48,13 @@ ocr_model = 'cct-xs-v1-global-model'
 webrtc_streamer(
     key="example",
     video_processor_factory=lambda: VideoProcessor(detector_model, ocr_model),
-    media_stream_constraints={"video": True, "audio": False}
+    media_stream_constraints={"video": True, "audio": False},
+    async_processing=True,
 )
+
+
+logger.log(result_queue.get())
+
+if st.checkbox("Show the detected labels", value=True):
+    labels_placeholder = st.empty()
+    labels_placeholder.table(result_queue.get())
