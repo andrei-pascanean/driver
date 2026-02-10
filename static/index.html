@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>License Hunter</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-LN+7fdVzj6u52u30Kp6M/trliBMCMKTyK833zpbD+pXdCLuTusPj697FH4R/5mcr" crossorigin="anonymous">
+</head>
+
+<body class="p-4 text-center">
+
+    <h1 class="mb-4">License Hunter</h1>
+    <video id="video" autoplay playsinline style="width: 100%; max-width: 480px;" class="mb-3"></video>
+    <div class="col-auto">
+        <button id="snapButton" type="button" class="btn btn-primary btn-lg px-4">Snap</button>
+    </div>
+
+    <div id="eventLog">
+        <!-- Log entries will appear here -->
+    </div>
+
+
+    <script>
+        async function startCamera() {
+            const constraints = {
+                video: {
+                    facingMode: { exact: "environment" }
+                },
+                audio: false
+            };
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                const video = document.getElementById("video");
+                video.srcObject = stream;
+
+                // Create canvas and context once, reuse later
+                const canvas = document.createElement("canvas");
+                const context = canvas.getContext("2d");
+
+                const logContainer = document.getElementById('eventLog');
+                let logCount = 0;
+
+                const snapButton = document.getElementById("snapButton");
+                snapButton.addEventListener('click', function () {
+                    const width = video.videoWidth;
+                    const height = video.videoHeight;
+
+                    if (width && height) {
+                        canvas.width = width;
+                        canvas.height = height;
+                        context.drawImage(video, 0, 0, width, height);
+
+                        canvas.toBlob(async (blob) => {
+                            const formData = new FormData();
+                            formData.append("frame", blob, "frame.jpg");
+
+                            try {
+                                const response = await fetch("/process_frame", {
+                                    method: "POST",
+                                    body: formData
+                                });
+
+                                if (response.ok) {
+                                    console.log("Frame sent successfully");
+                                    const data = await response.json();
+                                    // console.log(JSON.stringify(data, null, 2));
+
+                                    data.plates.forEach(plate => {
+                                        const log = "Plate detected: " + plate;
+                                        const entry = document.createElement('div');
+                                        entry.className = `log-entry`;
+                                        entry.textContent = log;
+                                        logContainer.appendChild(entry);
+                                        logContainer.scrollTop = logContainer.scrollHeight;
+                                        logCount++;
+                                    });
+
+
+                                } else {
+                                    console.error("Upload failed");
+                                }
+                            } catch (err) {
+                                console.error("Error during fetch:", err);
+                            }
+
+                        }, "image/jpeg");
+                    }
+                });
+
+            } catch (error) {
+                alert("Camera access denied or not supported: " + error.message);
+                console.error(error);
+            }
+        }
+
+        startCamera();
+    </script>
+
+</body>
+
+</html>
